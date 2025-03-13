@@ -2,71 +2,55 @@
 #include "pico/stdlib.h"
 #include <stdio.h>
 
-#define LED_PIN_0  2
-#define BTN_PIN_0  3
+const int BTN_PIN_R = 28;
+const int LED_PIN_R = 4;
 
+volatile bool piscaled = false; 
+volatile bool active_timer = false;
 
-volatile int pisca_0 = 0;
-
-// "timer_0" será a FLAG para saber se o timer disparou (1) ou não (0)
-volatile int timer_0 = 0;
-
-// Estrutura do SDK p/ o timer (renomeada para evitar conflito)
-repeating_timer_t timer_0_struct; 
-
-// Callback do timer: marca a FLAG
-bool timer_callback_0(repeating_timer_t *rt) {
-    timer_0 = 1;  
-    return true; 
+bool timer_callback(repeating_timer_t *rt) {
+    active_timer = true;
+    return true;
 }
 
-// Callback do botão: inverte o estado de "pisca_0"
-void btn_callback_0(uint gpio, uint32_t events) {
+void btn_callback(uint gpio, uint32_t events) {
     if (events & GPIO_IRQ_EDGE_FALL) {
-        pisca_0 = !pisca_0;
+        piscaled = !piscaled;
     }
 }
 
 int main() {
+
     stdio_init_all();
+    gpio_init(LED_PIN_R);
+    gpio_set_dir(LED_PIN_R, GPIO_OUT);
+    gpio_put(LED_PIN_R, 0);
 
-    // Configura LED
-    gpio_init(LED_PIN_0);
-    gpio_set_dir(LED_PIN_0, GPIO_OUT);
-    gpio_put(LED_PIN_0, 0);
+    gpio_init(BTN_PIN_R);
+    gpio_set_dir(BTN_PIN_R, GPIO_IN);
+    gpio_pull_up(BTN_PIN_R);
 
-    // Configura botão
-    gpio_init(BTN_PIN_0);
-    gpio_set_dir(BTN_PIN_0, GPIO_IN);
-    gpio_pull_up(BTN_PIN_0);
+    repeating_timer_t timer;
 
-    // Interrupção do botão
     gpio_set_irq_enabled_with_callback(
-        BTN_PIN_0,
+        BTN_PIN_R,
         GPIO_IRQ_EDGE_FALL,
         true,
-        &btn_callback_0
+        &btn_callback
     );
 
-    // Inicia o timer (observe que agora passamos &timer_0_struct)
-    if (!add_repeating_timer_ms(500, timer_callback_0, NULL, &timer_0_struct)) {
-        printf("Falha ao adicionar timer_0\n");
+    if (!add_repeating_timer_ms(500, timer_callback, NULL, &timer)) {
+        printf("Falha ao adicionar o timer\n");
     }
-
     while (true) {
-        // Se é para piscar e o timer "disparou" (timer_0 == 1)
-        if (pisca_0 && timer_0) {
-            // Reseta a flag
-            timer_0 = 0;
-            // Inverte LED
-            gpio_put(LED_PIN_0, !gpio_get(LED_PIN_0));
+        if (piscaled) {
+            if (active_timer) {
+                gpio_put(LED_PIN_R, !gpio_get(LED_PIN_R));
+                active_timer = false;
+            }
+        } else {
+            gpio_put(LED_PIN_R, 0);
         }
-        else if (!pisca_0) {
-            // Se não for piscar, manter LED apagado
-            gpio_put(LED_PIN_0, 0);
-        }
-
-        sleep_ms(10);
+        sleep_ms(10); 
     }
-    return 0;
 }
